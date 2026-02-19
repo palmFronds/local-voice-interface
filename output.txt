@@ -1,0 +1,64 @@
+## What was created
+
+config.py (148 lines)
+  - Config frozen dataclass with all project constants
+  - load() function that reads .env and environment variables
+  - __main__ block for direct testing
+
+.env.example
+  - Documents every environment variable
+  - REQUIRED / OPTIONAL tags on each entry
+  - Placeholder values and one-line descriptions
+
+requirements.txt
+  - python-dotenv==1.0.1 only (grows with each build step)
+
+
+## How to test it
+
+1. Install the dependency:
+   pip install -r requirements.txt
+
+2. Create your .env file:
+   cp .env.example .env
+
+3. Edit .env and fill in the four required keys.
+   Placeholder strings work for this step — they just need to be non-empty:
+   DEEPGRAM_API_KEY=test_key
+   TTS_API_KEY=test_key
+   TTS_VOICE_ID=test_voice
+   LLM_API_KEY=test_key
+
+4. Run the pass condition:
+   python config.py
+
+
+## What a successful output looks like
+
+Config(deepgram_api_key='test_key', tts_api_key='test_key', tts_voice_id='test_voice',
+llm_api_key='test_key', chunk_size=320, sample_rate=16000, chunk_ms=20,
+vad_aggressiveness=2, silence_duration_ms=600, deepgram_model='nova-2',
+tts_provider='elevenlabs', llm_api_base='https://api.openai.com/v1',
+llm_model='gpt-4o-mini', llm_system_prompt='You are a helpful voice assistant. Be concise.
+Your responses will be spoken aloud.', llm_max_history_turns=20, log_level='INFO')
+
+Key things to verify:
+  - chunk_size=320  (derived: 16000 * 20 // 1000 = 320, never read from env)
+  - All optional fields populated with defaults even if not set in .env
+
+
+## What fails and why if a required variable is missing
+
+If any of these four variables is absent or empty in .env:
+  DEEPGRAM_API_KEY
+  TTS_API_KEY
+  TTS_VOICE_ID
+  LLM_API_KEY
+
+load() raises immediately with a clear message, e.g.:
+
+  ValueError: Required environment variable 'DEEPGRAM_API_KEY' is missing or empty.
+  Copy .env.example to .env and fill in all required values.
+
+The error names the exact missing variable. All other variables have defaults
+defined in the Config dataclass and will never raise.
