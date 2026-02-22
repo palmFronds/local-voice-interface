@@ -6,7 +6,15 @@
       "WebSearch",
       "Bash(python audio.py:*)",
       "Bash(pip install:*)",
-      "Bash(pip index:*)"
+      "Bash(pip index:*)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:developers.deepgram.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:deepgram.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cd:*)",
+      "Bash(head:*)",
+      "Bash(python:*)"
     ]
   }
 }

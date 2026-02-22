@@ -6,8 +6,10 @@
 # Step 1 — config.py
 # Step 2 — audio.py (capture only)
 # Step 3 — audio.py (VAD)
+# Step 4 — stt.py
 
 python-dotenv==1.0.1
 sounddevice==0.5.5
 numpy==2.4.2
 webrtcvad-wheels==2.0.14  # drop-in replacement for webrtcvad; ships pre-built Windows wheels
+deepgram-sdk==5.3.2
