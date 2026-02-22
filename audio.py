@@ -127,6 +127,17 @@ class AudioController:
             # the task exits cleanly and the awaiting teardown loop can proceed.
             logger.debug("start_capture cancelled")
             raise
+        finally:
+            # Close the stream on every exit path — normal, cancelled, or exception.
+            # Without this, a task.cancel() teardown leaves the PortAudio callback
+            # thread alive and still writing frames to mic_queue. The next call to
+            # start_capture() would open a second stream, creating two producers on
+            # the same queue and doubling every audio frame into STT and VAD.
+            # stop_capture() also closes the stream, but sets self._stream = None first,
+            # so the None guard here prevents a double-close on the normal exit path.
+            if self._stream is not None:
+                self._stream.close()
+                self._stream = None
 
     async def stop_capture(self) -> None:
         """Stop mic stream cleanly.
@@ -144,6 +155,56 @@ class AudioController:
         if self._stop_event is not None:
             self._stop_event.set()
         logger.info("Mic capture stopped")
+
+
+    async def play(self, audio_queue: asyncio.Queue, interrupt_event: asyncio.Event) -> None:
+        """Drain audio_queue to the speaker until interrupted or cancelled.
+
+        Writes int16 PCM chunks from audio_queue to a sounddevice OutputStream as
+        they arrive. Two exit paths:
+
+          - Interrupt: interrupt_event is set by VoiceStateMachine._watch_for_interrupt()
+            when speech is detected during playback. Returns immediately on next check.
+          - Natural completion: the state machine cancels this task after detecting
+            audio_queue empty AND tts_done_event set. CancelledError propagates cleanly.
+
+        In both cases the with-block calls stream.stop() on exit, which flushes the
+        PortAudio output buffer — preventing audio pops or cut-off words.
+
+        stream.write() blocks the calling thread until PortAudio accepts the data
+        (up to one buffer period, ~20ms at 16kHz). Offloading to run_in_executor
+        keeps the asyncio event loop free to service the interrupt check and other
+        coroutines while audio is being written.
+
+        Args:
+            audio_queue: Queue of raw PCM bytes chunks (int16, mono, 16 kHz).
+            interrupt_event: Set by _watch_for_interrupt when user speaks during playback.
+        """
+        loop = asyncio.get_running_loop()
+        try:
+            with sd.OutputStream(
+                samplerate=self._config.sample_rate,
+                channels=1,
+                dtype="int16",
+            ) as stream:
+                logger.info("Playback started")
+                while not interrupt_event.is_set():
+                    try:
+                        chunk: bytes = await asyncio.wait_for(
+                            audio_queue.get(), timeout=0.05
+                        )
+                    except asyncio.TimeoutError:
+                        # No chunk yet — loop back and recheck interrupt_event.
+                        continue
+                    audio_array = np.frombuffer(chunk, dtype=np.int16)
+                    await loop.run_in_executor(None, stream.write, audio_array)
+                logger.debug("Playback: interrupt detected, flushing buffer")
+        except asyncio.CancelledError:
+            logger.debug("Playback cancelled")
+            raise
+        except Exception as exc:
+            logger.error("Playback error: %s", exc)
+            raise
 
 
 if __name__ == "__main__":
