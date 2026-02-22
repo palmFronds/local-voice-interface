@@ -193,7 +193,7 @@ class VoiceStateMachine:
             if self.state == new_state:
                 return
 
-            logger.info("State: %s → %s", self.state.value, new_state.value)
+            logger.info("State: %s → %s", self.state.value if self.state else "none", new_state.value)
 
             # 1. Signal all active tasks to stop
             for task in self.active_tasks:
