@@ -3,6 +3,11 @@
 # Built against Python 3.11+
 #
 # Packages are added here incrementally as each build step is completed.
-# Step 1 — config.py only
+# Step 1 — config.py
+# Step 2 — audio.py (capture only)
+# Step 3 — audio.py (VAD)
 
 python-dotenv==1.0.1
+sounddevice==0.5.5
+numpy==2.4.2
+webrtcvad-wheels==2.0.14  # drop-in replacement for webrtcvad; ships pre-built Windows wheels

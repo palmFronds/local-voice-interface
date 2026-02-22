@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(pip show:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "WebSearch",
+      "Bash(python audio.py:*)",
+      "Bash(pip install:*)",
+      "Bash(pip index:*)"
     ]
   }
 }
