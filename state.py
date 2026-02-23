@@ -281,6 +281,7 @@ class VoiceStateMachine:
             self._watch_for_interrupt(),
             name="vad_interrupt",
         )
+        logger.debug("VAD interrupt watcher starting with 1.5s delay")
         self.active_tasks.extend([capture_task, tts_task, playback_task, vad_task])
         # Add the agent task now so the SPEAKING → LISTENING teardown cancels it.
         # If the agent finished naturally before we reach this point, done() is True
@@ -328,8 +329,10 @@ class VoiceStateMachine:
         finally:
             # Send the sentinel even on cancellation so _run_tts() is never left
             # blocked on token_queue.get() waiting for a token that will never arrive.
+            # tts_done_event is set by _run_tts() after all audio is produced — not here.
+            # The agent may finish generating tokens while ElevenLabs is still synthesizing,
+            # so setting it here would cause a premature natural-completion transition.
             await self.token_queue.put(None)
-            self.tts_done_event.set()
 
     async def _run_tts(self) -> None:
         """Bridge token_queue into tts.synthesize() and put PCM chunks into audio_queue.
@@ -349,6 +352,12 @@ class VoiceStateMachine:
 
             async for chunk in self._tts.synthesize(_token_source()):
                 await self.audio_queue.put(chunk)
+
+            # All audio chunks are now in audio_queue. Signal natural completion here
+            # rather than in _run_agent() because the agent finishing tokens does not
+            # mean ElevenLabs has finished synthesizing — the API call may still be
+            # in flight. Setting too early caused a ~55ms premature SPEAKING→LISTENING.
+            self.tts_done_event.set()
 
         except asyncio.CancelledError:
             logger.info("TTS runner cancelled")
@@ -371,6 +380,12 @@ class VoiceStateMachine:
         agent has produced any audio at all.
         """
         try:
+            # Hard delay before any VAD checks: speaker audio bleeds into the mic
+            # during the first ~300ms of playback and would immediately trigger a
+            # false interrupt. 1.5 seconds gives the speaker time to stabilise
+            # and ensures the user has actually heard something before we listen
+            # for a barge-in.
+            await asyncio.sleep(1.5)
             while True:
                 frame: bytes = await self.mic_queue.get()
                 if self._audio.vad_is_speech(frame):
