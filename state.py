@@ -150,7 +150,7 @@ class VoiceStateMachine:
                         self.interrupt_event.clear()
                         await self._transition_to(ConversationState.LISTENING)
                     elif self.audio_queue.empty() and self.tts_done_event.is_set():
-                        # Natural completion: agent stream closed and all audio played.
+                        logger.info("NATURAL COMPLETION: audio_queue empty + tts_done")
                         await self._transition_to(ConversationState.LISTENING)
 
         except (KeyboardInterrupt, asyncio.CancelledError):
@@ -397,15 +397,29 @@ class VoiceStateMachine:
         try:
             # Hard delay before any VAD checks: speaker audio bleeds into the mic
             # during the first ~300ms of playback and would immediately trigger a
-            # false interrupt. 1.5 seconds gives the speaker time to stabilise
+            # false interrupt. 2.0 seconds gives the speaker time to stabilise
             # and ensures the user has actually heard something before we listen
             # for a barge-in.
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2.0)
+            logger.debug("VAD interrupt watcher active")
+            consecutive_speech_frames: int = 0
             while True:
                 frame: bytes = await self.mic_queue.get()
                 if self._audio.vad_is_speech(frame):
-                    logger.debug("VAD: speech during playback — interrupt triggered")
-                    self.interrupt_event.set()
+                    consecutive_speech_frames += 1
+                    logger.debug("VAD interrupt: speech frame %d/5", consecutive_speech_frames)
+                    # Require 5 consecutive speech frames (5 × 20ms = 100ms) before
+                    # declaring an interrupt. A single loud noise or mic bleed would
+                    # fire the old single-frame check; sustained speech is a much
+                    # stronger signal that the user is genuinely trying to barge in.
+                    if consecutive_speech_frames >= 5:
+                        logger.info("VAD INTERRUPT TRIGGERED after %d consecutive speech frames",
+                                    consecutive_speech_frames)
+                        self.interrupt_event.set()
+                else:
+                    # Any silence resets the run — the user must speak continuously
+                    # for 100ms, not accumulate 5 scattered speech frames.
+                    consecutive_speech_frames = 0
         except asyncio.CancelledError:
             logger.info("VAD interrupt watcher cancelled")
             raise
