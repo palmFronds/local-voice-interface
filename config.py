@@ -44,6 +44,7 @@ class Config:
     # ── Voice Activity Detection ──────────────────────────────────────────────
     vad_aggressiveness: int = 2   # 0 (least) – 3 (most); 2 balances sensitivity vs. false positives
     silence_duration_ms: int = 600  # ms of continuous silence that ends an utterance
+    vad_energy_threshold: float = 300.0  # RMS gate applied before webrtcvad; filters quiet hiss
 
     # ── Speech-to-Text ────────────────────────────────────────────────────────
     deepgram_model: str = "nova-2"
@@ -133,6 +134,7 @@ def load() -> Config:
         # VAD
         vad_aggressiveness=_optional_int("VAD_AGGRESSIVENESS", "vad_aggressiveness"),
         silence_duration_ms=_optional_int("SILENCE_DURATION_MS", "silence_duration_ms"),
+        vad_energy_threshold=_optional_float("VAD_ENERGY_THRESHOLD", "vad_energy_threshold"),
         # STT
         deepgram_model=_optional("DEEPGRAM_MODEL", "deepgram_model"),
         # TTS

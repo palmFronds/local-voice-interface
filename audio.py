@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import struct
 from typing import Optional
 
 import numpy as np
@@ -66,11 +68,31 @@ class AudioController:
         Returns:
             True if speech detected, False if silence.
         """
-        result = self._vad.is_speech(audio_frame, self._config.sample_rate)
-        # Per-frame classification is extremely noisy (50 frames/sec); DEBUG only
-        # so INFO-level logs stay clean during normal operation.
-        logger.debug("VAD frame: %s", "SPEECH" if result else "SILENCE")
-        return result
+        # Energy gate: reject frames that are too quiet to be speech before
+        # handing off to webrtcvad. webrtcvad classifies waveform shape, not
+        # amplitude — it will happily label low-level hiss as speech if the
+        # pattern looks right. The RMS check catches that before it reaches the
+        # VAD, preventing near-silence from accumulating consecutive-frame counts
+        # in _watch_for_interrupt().
+        if self._rms(audio_frame) < self._config.vad_energy_threshold:
+            return False
+        return self._vad.is_speech(audio_frame, self._config.sample_rate)
+
+    def _rms(self, frame: bytes) -> float:
+        """Calculate RMS energy of a PCM frame.
+
+        Unpacks int16 little-endian samples (the format sounddevice produces at
+        16 kHz mono) and returns the root-mean-square amplitude. Used as a fast
+        energy gate before the more expensive webrtcvad classifier.
+
+        Args:
+            frame: Raw PCM bytes (int16, mono, 16 kHz).
+
+        Returns:
+            RMS energy value in the range 0–32768.
+        """
+        samples = struct.unpack(f"{len(frame) // 2}h", frame)
+        return math.sqrt(sum(s * s for s in samples) / len(samples))
 
     async def start_capture(self, audio_queue: asyncio.Queue) -> None:
         """Begin streaming 20ms PCM frames into audio_queue.

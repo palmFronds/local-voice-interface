@@ -125,6 +125,10 @@ class VoiceStateMachine:
         wakeup management. The only cost is one await per loop tick.
         """
         logger.info("Voice pipeline starting")
+        # Open the Deepgram WebSocket once here and keep it warm for the session.
+        # stream() reuses this connection on every LISTENING entry, eliminating the
+        # per-turn ~300–500ms handshake that caused the post-interrupt delay.
+        await self._stt.connect()
         await self._transition_to(ConversationState.LISTENING)
 
         try:
@@ -176,6 +180,7 @@ class VoiceStateMachine:
                     await task
                 except (asyncio.CancelledError, Exception):
                     pass
+            await self._stt.disconnect()
 
     # ── Transition ───────────────────────────────────────────────────────────
 
@@ -416,6 +421,7 @@ class VoiceStateMachine:
                         logger.info("VAD INTERRUPT TRIGGERED after %d consecutive speech frames",
                                     consecutive_speech_frames)
                         self.interrupt_event.set()
+                        break  # Stop watching — the FSM will cancel this task momentarily
                 else:
                     # Any silence resets the run — the user must speak continuously
                     # for 100ms, not accumulate 5 scattered speech frames.
