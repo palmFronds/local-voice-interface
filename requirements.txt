@@ -7,13 +7,15 @@
 # Step 2 — audio.py (capture only)
 # Step 3 — audio.py (VAD)
 # Step 4 — stt.py
-# Step 5 — agent.py
+# Step 5 — agent.py (Phase 1: openai; Phase 2: websockets)
 # Step 6 — tts.py
+# Phase 2 — agent.py OpenClaw Gateway integration
 
 python-dotenv==1.0.1
 sounddevice==0.5.5
 numpy==2.4.2
 webrtcvad-wheels==2.0.14  # drop-in replacement for webrtcvad; ships pre-built Windows wheels
 deepgram-sdk==5.3.2
-openai==2.21.0
+openai==2.21.0            # retained for reference; not used in Phase 2 agent
 elevenlabs==2.36.1        # output_format='pcm_16000' yields int16 PCM directly — no pydub/ffmpeg needed
+websockets==14.2          # Phase 2: WebSocket client for OpenClaw Gateway

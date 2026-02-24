@@ -66,7 +66,11 @@ class AudioController:
         Returns:
             True if speech detected, False if silence.
         """
-        return self._vad.is_speech(audio_frame, self._config.sample_rate)
+        result = self._vad.is_speech(audio_frame, self._config.sample_rate)
+        # Per-frame classification is extremely noisy (50 frames/sec); DEBUG only
+        # so INFO-level logs stay clean during normal operation.
+        logger.debug("VAD frame: %s", "SPEECH" if result else "SILENCE")
+        return result
 
     async def start_capture(self, audio_queue: asyncio.Queue) -> None:
         """Begin streaming 20ms PCM frames into audio_queue.

@@ -60,6 +60,11 @@ class StreamingTTS:
     async def _stream_phrase(self, text: str) -> AsyncIterator[bytes]:
         """Send one buffered phrase to ElevenLabs and yield raw PCM audio chunks.
 
+        Applies asyncio.wait_for() to the first chunk only. The first chunk is
+        when the HTTP connection is established and ElevenLabs begins synthesis.
+        Subsequent chunks arrive quickly once streaming starts, so applying the
+        timeout there would incorrectly abort long responses.
+
         Args:
             text: A phrase-sized text string to synthesise.
 
@@ -78,7 +83,29 @@ class StreamingTTS:
             output_format="pcm_16000",  # int16 mono 16 kHz — matches sounddevice config
             model_id=_TTS_MODEL,
         )
-        async for chunk in audio_stream:
+        aiter = audio_stream.__aiter__()
+
+        # Wait for the first chunk with a hard timeout. If ElevenLabs does not
+        # respond in time (network hang, rate limit, API down), return without
+        # yielding. The caller (synthesize) produces no audio for this phrase;
+        # tts_done_event is still set by _run_tts so the FSM transitions cleanly.
+        try:
+            first_chunk = await asyncio.wait_for(
+                aiter.__anext__(), timeout=self._config.tts_timeout
+            )
+        except StopAsyncIteration:
+            return  # Empty response from ElevenLabs — nothing to yield.
+        except asyncio.TimeoutError:
+            logger.warning(
+                "TTS timeout after %.1fs — ElevenLabs did not respond", self._config.tts_timeout
+            )
+            return
+
+        if first_chunk:
+            yield first_chunk
+
+        # Remaining chunks arrive quickly once the stream is open; no timeout needed.
+        async for chunk in aiter:
             if chunk:  # SDK may emit empty bytes between real chunks
                 yield chunk
 

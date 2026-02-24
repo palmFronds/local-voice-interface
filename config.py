@@ -33,7 +33,6 @@ class Config:
     deepgram_api_key: str
     tts_api_key: str
     tts_voice_id: str
-    llm_api_key: str
 
     # ── Derived: computed from sample_rate × chunk_ms, never read from env ───
     chunk_size: int  # = sample_rate * chunk_ms // 1000  (e.g. 320 samples at 16 kHz / 20 ms)
@@ -51,14 +50,19 @@ class Config:
 
     # ── Text-to-Speech ────────────────────────────────────────────────────────
     tts_provider: str = "elevenlabs"  # "elevenlabs" or "cartesia"
+    tts_timeout: float = 5.0          # seconds to wait for first audio chunk before giving up
 
     # ── LLM Agent (Phase 1) ───────────────────────────────────────────────────
     llm_api_base: str = "https://api.openai.com/v1"
+    llm_api_key: str = ""  # Optional in Phase 2 — OpenClaw owns the LLM connection
     llm_model: str = "gpt-4o-mini"
     llm_system_prompt: str = (
         "You are a helpful voice assistant. Be concise. Your responses will be spoken aloud."
     )
     llm_max_history_turns: int = 20  # Rolling window; system prompt is always preserved
+
+    # ── OpenClaw Gateway (Phase 2) ────────────────────────────────────────────
+    llm_ws_url: str = "ws://127.0.0.1:18789"  # WebSocket address of the running OpenClaw daemon
 
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: str = "INFO"
@@ -106,6 +110,9 @@ def load() -> Config:
     def _optional_int(env_key: str, field_name: str) -> int:
         return int(_optional(env_key, field_name))
 
+    def _optional_float(env_key: str, field_name: str) -> float:
+        return float(_optional(env_key, field_name))
+
     # Resolve audio settings first so we can derive chunk_size from them.
     sample_rate = _optional_int("SAMPLE_RATE", "sample_rate")
     chunk_ms = _optional_int("CHUNK_MS", "chunk_ms")
@@ -118,7 +125,6 @@ def load() -> Config:
         deepgram_api_key=_require("DEEPGRAM_API_KEY"),
         tts_api_key=_require("TTS_API_KEY"),
         tts_voice_id=_require("TTS_VOICE_ID"),
-        llm_api_key=_require("LLM_API_KEY"),
         # Derived
         chunk_size=chunk_size,
         # Audio
@@ -131,11 +137,15 @@ def load() -> Config:
         deepgram_model=_optional("DEEPGRAM_MODEL", "deepgram_model"),
         # TTS
         tts_provider=_optional("TTS_PROVIDER", "tts_provider"),
-        # LLM
+        tts_timeout=_optional_float("TTS_TIMEOUT", "tts_timeout"),
+        # LLM (Phase 1 only — llm_api_key is optional in Phase 2)
         llm_api_base=_optional("LLM_API_BASE", "llm_api_base"),
+        llm_api_key=_optional("LLM_API_KEY", "llm_api_key"),
         llm_model=_optional("LLM_MODEL", "llm_model"),
         llm_system_prompt=_optional("LLM_SYSTEM_PROMPT", "llm_system_prompt"),
         llm_max_history_turns=_optional_int("LLM_MAX_HISTORY_TURNS", "llm_max_history_turns"),
+        # OpenClaw Gateway (Phase 2)
+        llm_ws_url=_optional("LLM_WS_URL", "llm_ws_url"),
         # Logging
         log_level=_optional("LOG_LEVEL", "log_level"),
     )

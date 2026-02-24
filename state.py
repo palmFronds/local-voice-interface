@@ -141,6 +141,7 @@ class VoiceStateMachine:
                     # Non-blocking O(1) check — no get() needed.
                     # Using get_nowait() + put_nowait() would reorder the consumed
                     # token to the back of the queue, silently corrupting TTS input.
+                    logger.debug("THINKING: token_queue size=%d", self.token_queue.qsize())
                     if not self.token_queue.empty():
                         await self._transition_to(ConversationState.SPEAKING)
 
@@ -152,11 +153,25 @@ class VoiceStateMachine:
                         # Natural completion: agent stream closed and all audio played.
                         await self._transition_to(ConversationState.LISTENING)
 
-        except KeyboardInterrupt:
-            logger.info("Shutting down")
-            for task in self.active_tasks:
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            # KeyboardInterrupt arrives when SIGINT reaches the coroutine directly.
+            # CancelledError arrives when asyncio.run() cancels the main task on
+            # shutdown (Python 3.11 delivers the interrupt as a task cancellation).
+            # Both paths reach the same teardown — cancel every owned task cleanly
+            # so no "Task was destroyed but it is pending!" warnings appear on exit.
+            logger.info("Shutting down cleanly")
+
+            # _agent_task is tracked separately from active_tasks (so it survives
+            # the THINKING → SPEAKING transition). Include it explicitly here so
+            # shutdown during a mid-turn does not leave an orphaned agent task.
+            all_shutdown_tasks = list(self.active_tasks)
+            if self._agent_task is not None and not self._agent_task.done():
+                if self._agent_task not in all_shutdown_tasks:
+                    all_shutdown_tasks.append(self._agent_task)
+
+            for task in all_shutdown_tasks:
                 task.cancel()
-            for task in self.active_tasks:
+            for task in all_shutdown_tasks:
                 try:
                     await task
                 except (asyncio.CancelledError, Exception):
