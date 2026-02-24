@@ -29,10 +29,14 @@ const TOKEN_DELAY_MS = 60;
 
 // Canned responses keyed on nothing — the stub ignores the actual transcript
 // and cycles through these to keep test turns distinguishable from each other.
+// Each response is 3–4 sentences, long enough to fill 8–10 seconds of TTS audio
+// and give you a comfortable window to test the interrupt path.
 const CANNED_RESPONSES = [
-  "OpenClaw stub here. I received your message and the voice pipeline is working end to end.",
-  "The connection to the gateway is healthy. Token streaming, TTS synthesis, and audio playback are all functioning correctly.",
-  "Interrupt me if you want to test the barge-in path. Speak while I am talking and the pipeline should stop immediately and return to listening.",
+  "The voice pipeline is fully connected and everything looks healthy on this end. Your microphone is picking up audio, Deepgram is producing transcripts, and the tokens are flowing through to ElevenLabs without any issues. This is the OpenClaw stub responding, so the actual agent logic hasn't run yet — but the plumbing from your mouth to the speaker is working exactly as it should.",
+
+  "That's a great question, and I want to give you a thorough answer. The short version is that the entire pipeline — speech recognition, the agent gateway, text-to-speech synthesis, and audio playback — is operating as a single continuous stream rather than a sequence of blocking calls. That means you're hearing the first word of my response within a couple hundred milliseconds of your transcript finalising, instead of waiting for the whole reply to generate before anything plays. It's a meaningful difference in how the conversation feels.",
+
+  "If you want to test the interrupt path, now is a good time — just start speaking while I'm still talking and the state machine should catch it. The VAD will detect your voice, set the interrupt event, and the playback loop will stop mid-sentence. The agent task gets cancelled, the audio buffer gets flushed, and the pipeline returns to listening within about two hundred milliseconds. Go ahead and try it a few times to make sure it holds up consistently.",
 ];
 
 let turnCount = 0;
