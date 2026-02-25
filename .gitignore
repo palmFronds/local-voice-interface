@@ -42,3 +42,6 @@ Thumbs.db
 *.log
 *.tmp
 output.txt
+
+# Node
+node_modules/

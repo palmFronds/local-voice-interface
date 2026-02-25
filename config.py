@@ -48,6 +48,7 @@ class Config:
 
     # ── Speech-to-Text ────────────────────────────────────────────────────────
     deepgram_model: str = "nova-2"
+    deepgram_endpointing_ms: int = 60   # ms of silence before Deepgram finalizes a transcript
 
     # ── Text-to-Speech ────────────────────────────────────────────────────────
     tts_provider: str = "elevenlabs"  # "elevenlabs" or "cartesia"
@@ -63,7 +64,9 @@ class Config:
     llm_max_history_turns: int = 20  # Rolling window; system prompt is always preserved
 
     # ── OpenClaw Gateway (Phase 2) ────────────────────────────────────────────
-    llm_ws_url: str = "ws://127.0.0.1:18789"  # WebSocket address of the running OpenClaw daemon
+    llm_ws_url: str = "ws://127.0.0.1:18789"  # Gateway WebSocket URL
+    openclaw_gateway_token: str = ""           # Auth token from ~/.openclaw/openclaw.json → gateway.auth.token
+    openclaw_cmd: str = "openclaw"             # Binary name — kept for reference; not used by WS approach
 
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: str = "INFO"
@@ -137,6 +140,7 @@ def load() -> Config:
         vad_energy_threshold=_optional_float("VAD_ENERGY_THRESHOLD", "vad_energy_threshold"),
         # STT
         deepgram_model=_optional("DEEPGRAM_MODEL", "deepgram_model"),
+        deepgram_endpointing_ms=_optional_int("DEEPGRAM_ENDPOINTING_MS", "deepgram_endpointing_ms"),
         # TTS
         tts_provider=_optional("TTS_PROVIDER", "tts_provider"),
         tts_timeout=_optional_float("TTS_TIMEOUT", "tts_timeout"),
@@ -148,6 +152,8 @@ def load() -> Config:
         llm_max_history_turns=_optional_int("LLM_MAX_HISTORY_TURNS", "llm_max_history_turns"),
         # OpenClaw Gateway (Phase 2)
         llm_ws_url=_optional("LLM_WS_URL", "llm_ws_url"),
+        openclaw_gateway_token=_optional("OPENCLAW_GATEWAY_TOKEN", "openclaw_gateway_token"),
+        openclaw_cmd=_optional("OPENCLAW_CMD", "openclaw_cmd"),
         # Logging
         log_level=_optional("LOG_LEVEL", "log_level"),
     )

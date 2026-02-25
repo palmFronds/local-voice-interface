@@ -149,6 +149,7 @@ class StreamingSTT:
                     channels="1",
                     interim_results="true",
                     punctuate="true",
+                    endpointing=str(self._config.deepgram_endpointing_ms),
                 ) as connection:
                     self._connection = connection
                     connection.on(EventType.OPEN, _on_open)

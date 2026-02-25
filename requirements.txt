@@ -19,3 +19,4 @@ deepgram-sdk==5.3.2
 openai==2.21.0            # retained for reference; not used in Phase 2 agent
 elevenlabs==2.36.1        # output_format='pcm_16000' yields int16 PCM directly — no pydub/ffmpeg needed
 websockets==14.2          # Phase 2: WebSocket client for OpenClaw Gateway
+cryptography>=44.0        # Phase 2: Ed25519 device-auth signing for Gateway handshake

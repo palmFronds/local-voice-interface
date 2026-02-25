@@ -231,7 +231,15 @@ class VoiceStateMachine:
 
             # 3. Reset shared state
             self.active_tasks.clear()
-            self._drain_queue(self.mic_queue)
+            # Do NOT drain mic_queue when entering LISTENING: frames already in
+            # the queue from interrupt speech (the user started talking during
+            # SPEAKING) should reach the new STT sender immediately. Draining
+            # would discard those leading frames and force the user to repeat the
+            # first syllable before STT picks up the new utterance.
+            # Do drain mic_queue on all other transitions — stale frames from
+            # a previous LISTENING period must not reach the VAD interrupt watcher.
+            if new_state != ConversationState.LISTENING:
+                self._drain_queue(self.mic_queue)
             self._drain_queue(self.audio_queue)
             # token_queue is NOT drained when entering SPEAKING: the agent task
             # is still running independently and may have already enqueued tokens.
