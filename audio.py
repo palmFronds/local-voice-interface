@@ -182,6 +182,63 @@ class AudioController:
             self._stop_event.set()
         logger.info("Mic capture stopped")
 
+    async def start_persistent_capture(self, audio_queue: asyncio.Queue) -> None:
+        """Open the PortAudio stream once and stream frames for the session lifetime.
+
+        Unlike start_capture(), this method is called once at startup and never
+        called again. The stream runs continuously across all state transitions,
+        eliminating the 40–100 ms PortAudio re-open gap that occurs on Windows
+        when start_capture() is called on every LISTENING entry.
+
+        Frames are delivered to audio_queue on every PortAudio callback regardless
+        of the current conversation state. VoiceStateMachine's per-state logic
+        (drain/preserve decisions on mic_queue) handles which frames are acted upon.
+
+        Args:
+            audio_queue: Queue to receive raw bytes frames for the session lifetime.
+        """
+        loop = asyncio.get_running_loop()
+        self._stop_event = asyncio.Event()
+
+        def _callback(
+            indata: np.ndarray,
+            frames: int,
+            time,
+            status: sd.CallbackFlags,
+        ) -> None:
+            if status:
+                logger.warning("Sounddevice capture status: %s", status)
+            loop.call_soon_threadsafe(audio_queue.put_nowait, indata.tobytes())
+
+        self._stream = sd.InputStream(
+            samplerate=self._config.sample_rate,
+            channels=1,
+            dtype="int16",
+            blocksize=self._config.chunk_size,
+            callback=_callback,
+        )
+        self._stream.start()
+        logger.info("Persistent mic capture started")
+
+        try:
+            await self._stop_event.wait()
+        except asyncio.CancelledError:
+            logger.debug("Persistent capture cancelled")
+            raise
+        finally:
+            if self._stream is not None:
+                self._stream.close()
+                self._stream = None
+
+    async def stop_persistent_capture(self) -> None:
+        """Stop the persistent mic stream cleanly at shutdown."""
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
+        if self._stop_event is not None:
+            self._stop_event.set()
+        logger.info("Persistent mic capture stopped")
+
 
     async def play(self, audio_queue: asyncio.Queue, interrupt_event: asyncio.Event) -> None:
         """Drain audio_queue to the speaker until interrupted or cancelled.

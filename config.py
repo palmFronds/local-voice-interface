@@ -48,7 +48,7 @@ class Config:
 
     # ── Speech-to-Text ────────────────────────────────────────────────────────
     deepgram_model: str = "nova-2"
-    deepgram_endpointing_ms: int = 60   # ms of silence before Deepgram finalizes a transcript
+    deepgram_endpointing_ms: int = 300  # ms of silence before Deepgram finalizes a transcript
 
     # ── Text-to-Speech ────────────────────────────────────────────────────────
     tts_provider: str = "elevenlabs"  # "elevenlabs" or "cartesia"

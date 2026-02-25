@@ -129,6 +129,14 @@ class VoiceStateMachine:
         # stream() reuses this connection on every LISTENING entry, eliminating the
         # per-turn ~300–500ms handshake that caused the post-interrupt delay.
         await self._stt.connect()
+        # Start the persistent mic stream once — it runs across all state transitions,
+        # eliminating the per-transition PortAudio re-open gap (40–100 ms on Windows
+        # WASAPI shared mode). All states read from mic_queue; the persistent capture
+        # writes into it continuously regardless of current state.
+        persistent_capture_task = asyncio.create_task(
+            self._audio.start_persistent_capture(self.mic_queue),
+            name="mic_capture_persistent",
+        )
         await self._transition_to(ConversationState.LISTENING)
 
         try:
@@ -181,6 +189,14 @@ class VoiceStateMachine:
                 except (asyncio.CancelledError, Exception):
                     pass
             await self._stt.disconnect()
+            # Stop the persistent mic stream after all pipeline tasks are done
+            # so no frames arrive on a queue nobody is draining.
+            await self._audio.stop_persistent_capture()
+            persistent_capture_task.cancel()
+            try:
+                await persistent_capture_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     # ── Transition ───────────────────────────────────────────────────────────
 
@@ -276,19 +292,19 @@ class VoiceStateMachine:
     # ── State entry methods ──────────────────────────────────────────────────
 
     def _start_listening(self) -> None:
-        """Start mic capture and STT for the LISTENING state."""
+        """Start STT for the LISTENING state.
+
+        Mic capture is now persistent (started once in run()) and does not need
+        to be restarted here. Only the STT sender task is created per-turn.
+        """
         # Clear utterance_event before starting: a leftover set event from the
         # previous turn would cause an immediate spurious LISTENING → THINKING.
         self.utterance_event.clear()
-        capture_task = asyncio.create_task(
-            self._audio.start_capture(self.mic_queue),
-            name="mic_capture",
-        )
         stt_task = asyncio.create_task(
             self._run_stt(),
             name="stt_stream",
         )
-        self.active_tasks.extend([capture_task, stt_task])
+        self.active_tasks.append(stt_task)
         logger.info("Listening...")
 
     def _start_thinking(self, transcript: str) -> None:
@@ -305,13 +321,12 @@ class VoiceStateMachine:
         logger.info("Thinking: %r", transcript)
 
     def _start_speaking(self) -> None:
-        """Start TTS synthesis, audio playback, VAD watcher, and mic capture."""
-        # Restart mic capture: _watch_for_interrupt() needs frames from mic_queue.
-        # STT is not started — raw PCM frames are all VAD requires; no transcription.
-        capture_task = asyncio.create_task(
-            self._audio.start_capture(self.mic_queue),
-            name="mic_capture_speaking",
-        )
+        """Start TTS synthesis, audio playback, and VAD interrupt watcher.
+
+        Mic capture is persistent — no capture_task created here. The persistent
+        stream (started once in run()) continues writing into mic_queue across the
+        THINKING → SPEAKING transition with no gap.
+        """
         tts_task = asyncio.create_task(self._run_tts(), name="tts")
         playback_task = asyncio.create_task(
             self._audio.play(self.audio_queue, self.interrupt_event),
@@ -321,8 +336,8 @@ class VoiceStateMachine:
             self._watch_for_interrupt(),
             name="vad_interrupt",
         )
-        logger.debug("VAD interrupt watcher starting with 1.5s delay")
-        self.active_tasks.extend([capture_task, tts_task, playback_task, vad_task])
+        logger.debug("VAD interrupt watcher starting with 2.0s delay")
+        self.active_tasks.extend([tts_task, playback_task, vad_task])
         # Add the agent task now so the SPEAKING → LISTENING teardown cancels it.
         # If the agent finished naturally before we reach this point, done() is True
         # and task.cancel() is a no-op, so adding it unconditionally is safe.
@@ -428,8 +443,10 @@ class VoiceStateMachine:
             await asyncio.sleep(2.0)
             logger.debug("VAD interrupt watcher active")
             consecutive_speech_frames: int = 0
+            collected_frames: list[bytes] = []
             while True:
                 frame: bytes = await self.mic_queue.get()
+                collected_frames.append(frame)
                 if self._audio.vad_is_speech(frame):
                     consecutive_speech_frames += 1
                     logger.debug("VAD interrupt: speech frame %d/5", consecutive_speech_frames)
@@ -438,13 +455,25 @@ class VoiceStateMachine:
                     # fire the old single-frame check; sustained speech is a much
                     # stronger signal that the user is genuinely trying to barge in.
                     if consecutive_speech_frames >= 5:
-                        logger.info("VAD INTERRUPT TRIGGERED after %d consecutive speech frames",
-                                    consecutive_speech_frames)
+                        logger.info(
+                            "VAD INTERRUPT TRIGGERED after %d consecutive speech frames; "
+                            "returning %d collected frames to mic_queue",
+                            consecutive_speech_frames, len(collected_frames),
+                        )
+                        # Return all collected frames (including the trigger frames) to
+                        # mic_queue in order so the new LISTENING stt_task forwards the
+                        # complete beginning of the user's utterance to Deepgram.
+                        # Without this, the 100ms of speech that fired the interrupt
+                        # is silently discarded and Deepgram misses the first word.
+                        for f in collected_frames:
+                            self.mic_queue.put_nowait(f)
                         self.interrupt_event.set()
                         break  # Stop watching — the FSM will cancel this task momentarily
                 else:
                     # Any silence resets the run — the user must speak continuously
                     # for 100ms, not accumulate 5 scattered speech frames.
+                    # Keep collecting silence frames too — Deepgram needs audio context
+                    # before the first word to transcribe accurately.
                     consecutive_speech_frames = 0
         except asyncio.CancelledError:
             logger.info("VAD interrupt watcher cancelled")
