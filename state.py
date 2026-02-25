@@ -247,6 +247,18 @@ class VoiceStateMachine:
             # response — the very tokens that triggered this transition.
             if new_state != ConversationState.SPEAKING:
                 self._drain_queue(self.token_queue)
+            # Drain stale transcripts when re-entering LISTENING. A previous turn's
+            # split utterance (Deepgram finalises a mid-sentence pause as two is_final
+            # events) can leave the second fragment sitting here. Without this drain,
+            # transcript_queue.get() on the next utterance_event returns the stale
+            # fragment instead of the user's new utterance, silently corrupting the
+            # next turn's input to the agent.
+            # Also clear utterance_event here so a leftover set event cannot fire an
+            # immediate LISTENING → THINKING before the user has spoken anything new
+            # (belt-and-suspenders alongside the clear inside _start_listening()).
+            if new_state == ConversationState.LISTENING:
+                self._drain_queue(self.transcript_queue)
+                self.utterance_event.clear()
             self.interrupt_event.clear()
 
             # 4. Commit the new state before starting tasks so any logging or

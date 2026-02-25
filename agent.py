@@ -180,7 +180,15 @@ class LLMAgent:
             async with websockets.connect(self._ws_url) as ws:
 
                 # ── Step 1: receive challenge ─────────────────────────────────
-                raw: str = await ws.recv()
+                # 10s timeout: a loopback Gateway that accepts the TCP connection
+                # but then stalls on the challenge would hang here indefinitely.
+                # TimeoutError is converted to ConnectionError so the outer
+                # except Exception handler speaks the error utterance and exits.
+                try:
+                    raw: str = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Gateway handshake timeout waiting for connect.challenge")
+                    raise ConnectionError("Gateway handshake timeout")
                 evt: dict = json.loads(raw)
                 if evt.get("event") != "connect.challenge":
                     raise ConnectionError(
@@ -218,7 +226,13 @@ class LLMAgent:
                 }))
 
                 # ── Step 3: receive hello-ok ──────────────────────────────────
-                raw = await ws.recv()
+                # Same 10s guard: Gateway could accept the connect request and
+                # then stall before replying with the hello-ok confirmation.
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Gateway handshake timeout waiting for hello-ok")
+                    raise ConnectionError("Gateway handshake timeout")
                 resp: dict = json.loads(raw)
                 if not resp.get("ok"):
                     raise ConnectionError(
@@ -250,7 +264,31 @@ class LLMAgent:
                 # We only care about event=="agent" frames; chat/tick/health/res ignored.
                 # assistant frames carry: delta (incremental token) + text (cumulative).
                 # Yield delta so TTS receives tokens as they arrive, not all at once.
-                async for raw in ws:
+                #
+                # Two-phase timeout replaces the unbounded `async for raw in ws`:
+                #   15s to the first token  — covers LLM thinking time before
+                #                             generation starts; a stall here left
+                #                             token_queue empty forever, pinning the
+                #                             FSM in THINKING with no escape.
+                #   30s between later tokens — covers slow streaming mid-response
+                #                             without cutting off a legitimately slow
+                #                             model mid-sentence.
+                # On either timeout, timed_out is set and a spoken error token is
+                # yielded after the loop so TTS always has something to say.
+                first_token_received: bool = False
+                timed_out: bool = False
+                while True:
+                    recv_timeout = 30.0 if first_token_received else 15.0
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=recv_timeout)
+                    except asyncio.TimeoutError:
+                        label = "mid-response" if first_token_received else "first-token"
+                        logger.warning(
+                            "Agent %s timeout after %.0fs — breaking out of stream loop",
+                            label, recv_timeout,
+                        )
+                        timed_out = True
+                        break
                     msg: dict = json.loads(raw)
                     if msg.get("type") != "event" or msg.get("event") != "agent":
                         continue
@@ -262,12 +300,16 @@ class LLMAgent:
                         # delta is the incremental text fragment for this event.
                         delta: str = data.get("delta", "")
                         if delta:
+                            first_token_received = True
                             yield delta
 
                     elif stream == "lifecycle":
                         if data.get("phase") == "end":
                             logger.info("Agent response complete")
                             break
+
+                if timed_out:
+                    yield "Sorry, the agent took too long to respond."
 
         except asyncio.CancelledError:
             # VoiceStateMachine cancelled this task (interrupt or shutdown).
