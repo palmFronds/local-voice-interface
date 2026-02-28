@@ -1,7 +1,4 @@
 # simple-voice-interface
-
-![Diagram of system architecture](https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=1470&auto=format&fit=crop)
-
 A minimal, locally-run, real-time interruptible voice pipeline for the OpenClaw autonomous agent. Speak to OpenClaw, interrupt it mid-sentence — it stops within ~200ms and starts listening again.
 
 Running locally eliminates per-minute SaaS voice API costs and removes the latency and privacy exposure of routing audio through a third-party orchestration layer. The only spend is the token cost on the agent side; everything else runs on your machine.
