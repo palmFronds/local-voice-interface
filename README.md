@@ -1,6 +1,6 @@
 # simple-voice-interface
 
-![Diagram of system architecture]([https://i.imgur.com/abc123.png](https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D))
+![Diagram of system architecture](https://i.imgur.com/abc123.png](https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D)
 
 A minimal, locally-run, real-time interruptible voice pipeline for the OpenClaw autonomous agent. Speak to OpenClaw, interrupt it mid-sentence — it stops within ~200ms and starts listening again.
 
