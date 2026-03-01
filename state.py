@@ -19,7 +19,7 @@ from stt import StreamingSTT
 from agent import LLMAgent
 from tts import StreamingTTS
 from config import Config
-from ui import ui_state_queue
+import ui
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,9 @@ class VoiceStateMachine:
         wakeup management. The only cost is one await per loop tick.
         """
         logger.info("Voice pipeline starting")
+        # Show inactive orb while Deepgram connects and mic opens — gives visual
+        # feedback that the process started before the first LISTENING transition.
+        ui.ui_state_queue.put("inactive")
         # Open the Deepgram WebSocket once here and keep it warm for the session.
         # stream() reuses this connection on every LISTENING entry, eliminating the
         # per-turn ~300–500ms handshake that caused the post-interrupt delay.
@@ -284,14 +287,20 @@ class VoiceStateMachine:
 
             # Notify the UI orb. SimpleQueue is thread-safe so this is safe from
             # the asyncio thread; the Qt timer on the main thread drains it every 50ms.
+            # is_speaking is written here (single writer) and read in the PortAudio
+            # C callback — safe on CPython due to GIL-protected bool assignment.
             if new_state == ConversationState.LISTENING:
-                ui_state_queue.put("listening")
+                ui.is_speaking = False
+                ui.ui_state_queue.put("listening")
             elif new_state == ConversationState.THINKING:
-                ui_state_queue.put("thinking")
+                ui.is_speaking = False
+                ui.ui_state_queue.put("thinking")
             elif new_state == ConversationState.SPEAKING:
-                ui_state_queue.put("speaking")
+                ui.is_speaking = True
+                ui.ui_state_queue.put("speaking")
             else:
-                ui_state_queue.put("inactive")
+                ui.is_speaking = False
+                ui.ui_state_queue.put("inactive")
 
             # 5. Start the new state's coroutines
             if new_state == ConversationState.LISTENING:

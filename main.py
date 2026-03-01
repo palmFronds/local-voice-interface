@@ -11,7 +11,8 @@ from stt import StreamingSTT
 from agent import LLMAgent
 from tts import StreamingTTS
 from state import VoiceStateMachine
-from ui import OrbWidget, ui_state_queue
+import ui
+from gateway import GatewayManager
 
 
 def run_pipeline() -> None:
@@ -27,21 +28,31 @@ def run_pipeline() -> None:
             level=getattr(logging, config.log_level),
             format="%(asctime)s %(levelname)s %(name)s %(message)s",
         )
-        logging.getLogger(__name__).info("Simple Voice Interface starting")
+        log = logging.getLogger(__name__)
+        log.info("Simple Voice Interface starting")
 
-        audio_controller = AudioController(config)
-        stt_engine = StreamingSTT(config)
-        llm_agent = LLMAgent(config)
-        tts_engine = StreamingTTS(config)
+        gateway = GatewayManager(config.openclaw_cmd)
+        if not await gateway.start():
+            log.error("Gateway unavailable — cannot start voice pipeline")
+            ui_state_queue.put("inactive")
+            return
 
-        machine = VoiceStateMachine(
-            audio=audio_controller,
-            stt=stt_engine,
-            agent=llm_agent,
-            tts=tts_engine,
-            config=config,
-        )
-        await machine.run()
+        try:
+            audio_controller = AudioController(config)
+            stt_engine = StreamingSTT(config)
+            llm_agent = LLMAgent(config)
+            tts_engine = StreamingTTS(config)
+
+            machine = VoiceStateMachine(
+                audio=audio_controller,
+                stt=stt_engine,
+                agent=llm_agent,
+                tts=tts_engine,
+                config=config,
+            )
+            await machine.run()
+        finally:
+            gateway.stop()
 
     try:
         asyncio.run(_main())
@@ -51,10 +62,10 @@ def run_pipeline() -> None:
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    orb = OrbWidget()
+    orb = ui.OrbWidget()
     orb.show()
     # Set orb to inactive immediately so it's visible before the pipeline boots.
-    ui_state_queue.put("inactive")
+    ui.ui_state_queue.put("inactive")
 
     pipeline_thread = threading.Thread(target=run_pipeline, daemon=True)
     pipeline_thread.start()

@@ -17,10 +17,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QColor, QBrush, QRadialGradient, QPen, QPainter
 
-# ── Module-level queues ─────────────────────────────────────────────────────────
+# ── Module-level queues and flags ───────────────────────────────────────────────
 # Thread-safe: pipeline asyncio tasks can push from any thread.
 ui_state_queue: queue.SimpleQueue = queue.SimpleQueue()
 ui_rms_queue: queue.SimpleQueue = queue.SimpleQueue()
+
+# Set True by state.py when SPEAKING is entered; False on any other transition.
+# audio.py reads this flag (without a lock — single-writer, reads are atomic on CPython)
+# to avoid flooding ui_rms_queue during LISTENING and THINKING.
+is_speaking: bool = False
 
 # ── Layout constants ────────────────────────────────────────────────────────────
 _WINDOW_PX = 300
