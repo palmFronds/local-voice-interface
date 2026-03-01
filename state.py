@@ -19,6 +19,7 @@ from stt import StreamingSTT
 from agent import LLMAgent
 from tts import StreamingTTS
 from config import Config
+from ui import ui_state_queue
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +281,17 @@ class VoiceStateMachine:
             # 4. Commit the new state before starting tasks so any logging or
             #    error path during startup reflects the intended state correctly.
             self.state = new_state
+
+            # Notify the UI orb. SimpleQueue is thread-safe so this is safe from
+            # the asyncio thread; the Qt timer on the main thread drains it every 50ms.
+            if new_state == ConversationState.LISTENING:
+                ui_state_queue.put("listening")
+            elif new_state == ConversationState.THINKING:
+                ui_state_queue.put("thinking")
+            elif new_state == ConversationState.SPEAKING:
+                ui_state_queue.put("speaking")
+            else:
+                ui_state_queue.put("inactive")
 
             # 5. Start the new state's coroutines
             if new_state == ConversationState.LISTENING:

@@ -17,6 +17,7 @@ import sounddevice as sd
 import webrtcvad
 
 from config import Config, load
+from ui import ui_rms_queue
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,14 @@ class AudioController:
         ) -> None:
             if status:
                 logger.warning("Sounddevice capture status: %s", status)
-            loop.call_soon_threadsafe(audio_queue.put_nowait, indata.tobytes())
+            frame_bytes: bytes = indata.tobytes()
+            loop.call_soon_threadsafe(audio_queue.put_nowait, frame_bytes)
+            # Push normalised RMS energy for the UI orb speaking-state visualisation.
+            # _rms() is pure computation — safe to call from the PortAudio C thread.
+            # audioop was removed in Python 3.13; _rms() is the existing equivalent.
+            # SimpleQueue.put() is thread-safe, no asyncio bridge needed here.
+            rms = self._rms(frame_bytes) / 32768.0
+            ui_rms_queue.put(min(rms, 1.0))
 
         self._stream = sd.InputStream(
             samplerate=self._config.sample_rate,
