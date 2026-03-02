@@ -126,3 +126,35 @@ node openclaw_stub.js
 # Start the voice interface
 python main.py
 ```
+
+---
+
+## Building a Standalone Exe
+
+The project packages as a Windows `.exe` via PyInstaller. API keys are baked into the binary at build time from the environment — they never appear in source control.
+
+**Prerequisites:** `pip install pyinstaller`
+
+**Steps:**
+
+1. Fill in `.env` with your API keys (copy from `.env.example` if needed):
+   ```
+   DEEPGRAM_API_KEY=...
+   TTS_API_KEY=...
+   TTS_VOICE_ID=...
+   OPENCLAW_GATEWAY_TOKEN=...
+   OPENCLAW_CMD=C:\path\to\openclaw.cmd
+   ```
+
+2. Build:
+   ```bash
+   pyinstaller build.spec --clean
+   ```
+   PyInstaller reads the keys from `.env` (via the normal `load_dotenv()` path in `config.py`) and bakes whatever values are present into the frozen bytecode. The resulting exe needs no `.env` file on the target machine.
+
+3. Output is at `dist/openclaw-voice/openclaw-voice.exe`. Zip for distribution:
+   ```powershell
+   Compress-Archive -Path dist\openclaw-voice -DestinationPath dist\openclaw-voice.zip
+   ```
+
+**Never commit `.env` or `dist/` — both are listed in `.gitignore`.**

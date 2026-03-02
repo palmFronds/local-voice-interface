@@ -468,6 +468,12 @@ class VoiceStateMachine:
             while True:
                 frame: bytes = await self.mic_queue.get()
                 collected_frames.append(frame)
+                # Emit mic RMS so the orb pulses with voice energy during SPEAKING.
+                # audio.py also emits from the capture callback; both are harmless —
+                # the Qt poll drains the queue and takes the latest value each tick.
+                rms_normalized = min(self._audio._rms(frame) / 3000.0, 1.0)
+                ui.ui_rms_queue.put(rms_normalized)
+
                 if self._audio.vad_is_speech(frame):
                     consecutive_speech_frames += 1
                     logger.debug("VAD interrupt: speech frame %d/5", consecutive_speech_frames)

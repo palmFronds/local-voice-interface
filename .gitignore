@@ -42,6 +42,7 @@ Thumbs.db
 *.log
 *.tmp
 output.txt
+*.zip
 
 # Node
 node_modules/

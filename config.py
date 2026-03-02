@@ -89,6 +89,10 @@ def load() -> Config:
     """
     load_dotenv()
 
+    # For distribution builds, set keys via environment or .env before running
+    # pyinstaller build.spec — PyInstaller bakes whatever is in the environment
+    # at build time into the frozen bytecode. Keys never need to appear in source.
+
     # Build a lookup of field defaults declared on Config so we never
     # repeat the same numbers here — Config is the single source of truth.
     field_defaults: dict[str, object] = {

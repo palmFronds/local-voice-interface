@@ -34,7 +34,7 @@ def run_pipeline() -> None:
         gateway = GatewayManager(config.openclaw_cmd)
         if not await gateway.start():
             log.error("Gateway unavailable — cannot start voice pipeline")
-            ui_state_queue.put("inactive")
+            ui.ui_state_queue.put("inactive")
             return
 
         try:
@@ -52,7 +52,7 @@ def run_pipeline() -> None:
             )
             await machine.run()
         finally:
-            gateway.stop()
+            await gateway.stop()
 
     try:
         asyncio.run(_main())
