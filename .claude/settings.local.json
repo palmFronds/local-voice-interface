@@ -20,7 +20,10 @@
       "Bash(cd /c/Users/dheer/Documents/GitHub/side_project/simple-voice-interface && cmd.exe /c \"C:\\\\Users\\\\dheer\\\\AppData\\\\Roaming\\\\npm\\\\openclaw.cmd\" agent --help 2>&1)",
       "Bash(cmd.exe:*)",
       "Bash(find C:\\\\Users\\\\dheer\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\openclaw\\\\docs:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(powershell:*)",
+      "Bash(rm:*)",
+      "Bash(start:*)"
     ]
   }
 }
